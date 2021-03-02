@@ -1,0 +1,61 @@
+---
+output:
+  word_document: default
+  html_document: default
+---
+### Assignment 1 Module 4
+
+```{r}
+library(tidyverse)
+library(VIM)
+library(mice)
+library(skimr)
+```
+```{r}
+class_grades <- read_csv("class-grades.csv")
+```
+```{r}
+str(class_grades)
+summary(class_grades)
+skim(class_grades)
+```
+
+There is missing data in "Tutorial", "Midterm", "TakeHome", and "Final".  
+
+```{r}
+vim_plot = aggr(class_grades, numbers = TRUE, prop = c(TRUE, FALSE),cex.axis=.7)
+```
+
+There is one student that is missing both their midterm and their takehome grades.  
+
+```{r}
+grade_rowdel = class_grades %>% drop_na() 
+
+skim(grade_rowdel)
+```
+
+89 rows remain in the dataframe after row wise deletion.  
+
+```{r}
+grade_coldel = class_grades %>% select(-Tutorial, -Midterm, -TakeHome, -Final) 
+```
+
+Only 2 columns remain after column wise deletion.  
+
+For this dataset row wise deletion is the favorable strategy to remove missing data. It only deletes 10 rows versus the column wise deletion that removed almost the entirety of the dataset.  
+
+```{r}
+set.seed(123) 
+imp_grade = mice(class_grades, m=5, method='pmm', printFlag=FALSE)
+summary(imp_grade)
+```
+```{r}
+grade_complete = complete(imp_grade) 
+summary(grade_complete)
+```
+
+The mean value for Final after the imputation is 68.33.  
+
+
+
+

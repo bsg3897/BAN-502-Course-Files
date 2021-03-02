@@ -1,0 +1,269 @@
+---
+output:
+  word_document: default
+  html_document: default
+---
+### Assignment 2 Module 4
+
+```{r}
+library(tidymodels)
+library(tidyverse)
+library(rpart)
+library(rpart.plot)
+library(caret)
+library(rattle)
+library(RColorBrewer)
+```
+```{r}
+parole <-read_csv("parole (1).csv")
+```
+```{r}
+parole = parole %>% mutate(male = as_factor(male)) %>% 
+  mutate(male = fct_recode(male, "Female" = "0", "Male" = "1" )) 
+
+parole = parole %>% mutate(race = as_factor(race)) %>% 
+  mutate(race = fct_recode(race, "Otherwise" = "2", "White" = "1" )) 
+
+parole = parole %>% mutate(state = as_factor(state)) %>% 
+  mutate(state = fct_recode(state, "KY" = "2", "Other" = "1", "LA" = "3", "VA" ="4" )) 
+
+parole = parole %>% mutate(crime = as_factor(crime)) %>% 
+  mutate(crime = fct_recode(crime, "Larceny" = "2", "Other Crime" = "1", "Drug" = "3", "Driving" ="4" )) 
+
+parole = parole %>% mutate(multiple.offenses = as_factor(multiple.offenses)) %>% 
+  mutate(multiple.offenses = fct_recode(multiple.offenses, "NO" = "0", "Multiple" = "1" )) 
+
+parole = parole %>% mutate(violator = as_factor(violator)) %>% 
+  mutate(violator = fct_recode(violator, "No" = "0", "Yes" = "1" )) 
+```
+```{r}
+set.seed(12345)
+parole_split = initial_split(parole, prop = 0.70, strata = violator)
+train = training(parole_split)
+test = testing(parole_split)
+```
+```{r}
+summary(parole)
+```
+```{r}
+parole_recipe = recipe(violator ~., train) %>%
+  step_dummy(all_nominal(),-all_outcomes())
+
+tree_model = decision_tree() %>% 
+  set_engine("rpart", model = TRUE) %>% 
+  set_mode("classification")
+
+parole_wflow = 
+  workflow() %>% 
+  add_model(tree_model) %>% 
+  add_recipe(parole_recipe)
+
+parole_fit = fit(parole_wflow, train)
+```
+```{r}
+tree = parole_fit %>% 
+  pull_workflow_fit() %>% 
+  pluck("fit")
+
+fancyRpartPlot(tree, tweak= 1.5) 
+```
+
+**How would you classify a 40 year-old parolee from Louisiana who served 5 years in prison, with a sentence of 10 years, and committed multiple offenses? Describe how you“walk through” the classification tree to arrive at your answer**  
+
+The parole above would be classified as a violator. The parole is from Louisiana which leads to the right. Next the parole has multiple offenses which again leads down the the right. The parole served less than 13 years which leads down the the left. Then the parole served less than 2.6 years which leads down to the right which leads to them being classified as a violator.  
+
+```{r}
+parole_fit$fit$fit$fit$cptable
+```
+
+**Which cp value is optimal (recall that the optimal cp corresponds to the minimized “xerror” value)? Is the tree from Task 2 associated with this optimal cp? ** 
+
+The optimal cp is 0.05454545, this does not associate with our tree. 
+
+```{r}
+set.seed(123)
+folds = vfold_cv(train, v = 5)
+```
+```{r}
+parole_recipe = recipe(violator ~., train) %>%
+  step_dummy(all_nominal(),-all_outcomes())
+
+tree_model = decision_tree(cost_complexity = tune()) %>% 
+  set_engine("rpart", model = TRUE) %>% 
+  set_mode("classification")
+
+tree_grid = grid_regular(cost_complexity(),
+                          levels = 25) 
+
+parole_wflow = 
+  workflow() %>% 
+  add_model(tree_model) %>% 
+  add_recipe(parole_recipe)
+
+tree_res = 
+  parole_wflow %>% 
+  tune_grid(
+    resamples = folds,
+    grid = tree_grid
+    )
+
+tree_res
+
+```
+```{r}
+tree_res %>%
+  collect_metrics() %>%
+  ggplot(aes(cost_complexity, mean)) +
+  geom_line(size = 1.5, alpha = 0.6) +
+  geom_point(size = 2) +
+  facet_wrap(~ .metric, scales = "free", nrow = 2)
+```
+```{r}
+best_tree = tree_res %>%
+  select_best("accuracy")
+
+best_tree
+```
+ 
+ The best CP value is 0.01778279.  
+
+```{r}
+final_wf = 
+  parole_wflow %>% 
+  finalize_workflow(best_tree)
+```
+```{r}
+final_fit = fit(final_wf, train)
+
+tree = final_fit %>% 
+  pull_workflow_fit() %>% 
+  pluck("fit")
+
+#fancyRpartPlot(tree, tweak = 1.5)
+```
+```{r}
+treepredtrain = predict(final_fit, train, type = "class")
+head(treepredtrain)
+```
+```{r}
+confusionMatrix(treepredtrain$.pred_class,train$violator,positive="Yes") 
+```
+
+The accuracy of the root created in task 7 is 88%. However, this is the same as the naive score which is not a great performance. 
+
+```{r}
+blood <- read_csv("Blood.csv")
+```
+```{r}
+blood = blood %>% mutate(DonatedMarch = as_factor(DonatedMarch)) %>% 
+  mutate(DonatedMarch = fct_recode(DonatedMarch, "No" = "0", "Yes" = "1" )) 
+```
+```{r}
+set.seed(1234)
+blood_split = initial_split(blood, prop = 0.70, strata = DonatedMarch)
+blood_train = training(blood_split)
+blood_test = testing(blood_split)
+```
+```{r}
+set.seed(1234)
+fold2 = vfold_cv(blood_train, v = 5)
+```
+```{r}
+blood_recipe = recipe(DonatedMarch ~., blood_train) %>%
+  step_dummy(all_nominal(),-all_outcomes())
+
+btree_model = decision_tree(cost_complexity = tune()) %>% 
+  set_engine("rpart", model = TRUE) %>% 
+  set_mode("classification")
+
+btree_grid = grid_regular(cost_complexity(),
+                          levels = 25) 
+
+blood_wflow = 
+  workflow() %>% 
+  add_model(btree_model) %>% 
+  add_recipe(blood_recipe)
+
+btree_res = 
+  blood_wflow %>% 
+  tune_grid(
+    resamples = fold2,
+    grid = btree_grid
+    )
+
+btree_res
+```
+```{r}
+btree_res %>%
+  collect_metrics() %>%
+  ggplot(aes(cost_complexity, mean)) +
+  geom_line(size = 1.5, alpha = 0.6) +
+  geom_point(size = 2) +
+  facet_wrap(~ .metric, scales = "free", nrow = 2)
+```
+.1 seems to be the optimal cp value from this graph.  
+
+```{r}
+blood_best_tree = btree_res %>%
+  select_best("accuracy")
+
+blood_best_tree
+```
+```{r}
+final_bwf = 
+  blood_wflow %>% 
+  finalize_workflow(blood_best_tree)
+```
+```{r}
+bfinal_fit = fit(final_bwf, blood_train)
+
+bloodtree = bfinal_fit %>% 
+  pull_workflow_fit() %>% 
+  pluck("fit")
+
+fancyRpartPlot(bloodtree, tweak = 1.5)
+```
+
+```{r}
+btreepredtrain = predict(bfinal_fit, blood_train, type = "class")
+head(btreepredtrain)
+```
+```{r}
+confusionMatrix(btreepredtrain$.pred_class,blood_train$DonatedMarch,positive="Yes") 
+```
+```{r}
+btreepred_test = predict(bfinal_fit, blood_test, type = "class")
+head(btreepred_test)
+```
+```{r}
+confusionMatrix(btreepred_test$.pred_class,blood_test$DonatedMarch,positive="Yes")
+```
+
+The model accuracy for both the training set and the testing set have a higher accuracy than the naive score. In the training set it is about 4% higher accuracy and in the test set it is about 2% higher accuracy.  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

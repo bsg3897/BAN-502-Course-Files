@@ -1,0 +1,79 @@
+---
+output:
+  word_document: default
+  html_document: default
+---
+### Module 3  
+## Assignment 1
+# Brittney Glover  
+
+```{r}
+library(tidyverse)
+library(tidymodels)
+library(lubridate)
+```
+```{r}
+bike <- read_csv("bike_cleaned-2.csv")
+bike = bike%>% mutate(dteday =mdy(dteday))
+bike <- bike %>% mutate_if(is.character,as.factor)
+bike <- bike %>% mutate(hr=as.factor(hr))
+```
+```{r}
+set.seed(1234)
+bike_split = initial_split(bike, prob = 0.70, strata = count)
+train = training(bike_split)
+test = testing(bike_split)
+```
+
+**How many rows of data are in each set (training and testing)?**  
+There are 13036 observatios in the training data and 4343 observations in the test data.  
+
+```{r}
+bike_recipe = recipe(count ~ season + mnth + hr + holiday + weekday + temp + weathersit, train)
+
+lm_model = #give the model type a name 
+  linear_reg() %>% #specify that we are doing linear regression
+  set_engine("lm") #specify the specify type of linear tool we want to use 
+
+lm_wflow = 
+  workflow() %>% 
+  add_model(lm_model) %>% 
+  add_recipe(bike_recipe)
+
+lm_fit = fit(lm_wflow, train)
+```
+```{r}
+summary(lm_fit$fit$fit$fit)
+```
+
+The quality of this model is fine. There are plenty predictors with significant values and the adjusted r-squared is 0.6229 which is reasonable.  
+
+```{r}
+predict_train <- predict(lm_fit, train)
+
+ggplot(predict_train, aes(x= .pred))+
+  geom_histogram()
+```
+
+There is a somewhat normal distribution of the predictions. A large range falls between 0 and 300.  
+
+```{r}
+lm_fit %>% predict(test) %>% bind_cols(test) %>% metrics(truth = count, estimate = .pred)
+```
+The r-squared value of the testing set is 0.6229 which is identical to the r-squared value of the training set. I would say that this is a well created model and does a good job maintaining the model with future values added. 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

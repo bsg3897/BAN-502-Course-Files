@@ -1,0 +1,162 @@
+---
+output:
+  word_document: default
+  html_document: default
+---
+## Assignment 2
+
+```{r}
+#install.packages("glmnet")
+#install.packages("ggcorrplot")
+#install.packages("MASS")
+#install.packages("car")
+#install.packages("lubridate")
+#install.packages("lmtest")
+#install.packages(splines)
+#install.packages("leaps")
+
+library(glmnet)
+library(ggcorrplot)
+library(MASS)
+library(car)
+library(lubridate)
+library(lmtest)
+library(tidymodels)
+library(tidyverse)
+library(GGally)
+library(splines)
+library(leaps)
+```
+```{r cleaning data}
+bike <- read_csv("bike_cleaned.csv")
+bike = bike%>% mutate(dteday =mdy(dteday))
+bike <- bike %>% mutate_if(is.character,as.factor)
+bike <- bike %>% mutate(hr=as.factor(hr))
+```
+
+**Why do we convert the “hr” variable into factor? Why not just leave as numbers?**  
+
+The reason that hr is converted into a factor is because a factor acts as a level versus a value. Values can be manipulated but hr stands for the hour of the day which we do not want to be able to manipluate. 
+
+```{r}
+ggcorr(bike, label=TRUE)
+ggplot(bike,aes(x=hum,y=count))+ geom_point()
+ggplot(bike,aes(x=windspeed,y=count))+ geom_point()
+
+```
+
+**Which of the quantitative variables appears to be best correlated with “count” (ignore the “registered”and “casual” variable as the sum of these two variables equals “count”)?**  
+The variables that best correlate with "count" are "atemp","temp",and "hum".  
+```{r boxplots}
+ggplot(bike,aes(x=season,y=count))+ geom_boxplot()+ theme_bw()
+ggplot(bike,aes(x=mnth,y=count))+ geom_boxplot()+ theme_bw()
+ggplot(bike,aes(x=holiday,y=count))+ geom_boxplot()+ theme_bw()
+ggplot(bike,aes(x=weekday,y=count))+ geom_boxplot()+ theme_bw()
+ggplot(bike,aes(x=workingday,y=count))+ geom_boxplot()+ theme_bw()
+ggplot(bike,aes(x=weathersit,y=count))+ geom_boxplot()+ theme_bw()
+```
+
+The two variables that seem to be good predictors of count are 'mnth' and 'weathersit'. I believe that 'mnth' is a good predictor as the temperature changes from month to month affect the count. I also think that 'weathersit' is a good predictor because there will be a smaller count on days with heavy rain versus days with no rain. 
+
+```{r linear regression}
+bike_recipe <- recipe(count ~ temp, bike)
+
+lm_model <- 
+  linear_reg()%>%
+  set_engine('lm')
+
+lm_wflow <-
+  workflow()%>%
+  add_model(lm_model)%>%
+  add_recipe(bike_recipe)
+
+lm_fit <-
+  fit(lm_wflow,bike)
+  
+```
+```{r}
+summary(lm_fit$fit$fit$fit)
+```
+
+Using 'temp' as the base model, we can see that the p-value is significant, it has a positive relationship with count and the adjusted r-squared is relatively okay.  
+
+
+```{r}
+bike_recipe2 <- recipe(count ~., bike)%>%
+  step_rm(instant,dteday,casual,registered)%>%
+  step_ns(hum, deg_free = 4)%>%
+  step_dummy(all_nominal())%>%
+  step_center(all_predictors())%>%
+  step_scale(all_predictors())
+
+ridge_model2 <- 
+  linear_reg(mixture = 0)%>%
+  set_engine("glmnet")
+
+ridge_wflow <-
+  workflow()%>%
+  add_model(ridge_model2)%>%
+  add_recipe(bike_recipe2)
+
+ridge_fit <-
+  fit(ridge_wflow, bike)
+```
+```{r}
+ridge_fit %>%
+  pull_workflow_fit()%>%
+  pluck('fit')
+```
+
+
+```{r}
+ridge_fit %>%
+  pull_workflow_fit()%>%
+  pluck('fit')%>%
+  coef(s = 15)
+```
+
+The lambda I choose was 15 which results in an adjusted r-squared of .6218 which is substantially better than my base model where I just used temperature as a predictor.  
+
+```{r}
+bike_recipe3 <- recipe(count ~., bike)%>%
+  step_rm(instant,dteday,casual,registered)%>%
+  step_ns(hum, deg_free = 4)%>%
+  step_dummy(all_nominal())%>%
+  step_center(all_predictors())%>%
+  step_scale(all_predictors())
+
+lasso_model3 <- 
+  linear_reg(mixture = 1)%>%
+  set_engine("glmnet")
+
+lasso_wflow <-
+  workflow()%>%
+  add_model(lasso_model3)%>%
+  add_recipe(bike_recipe3)
+
+lasso_fit <-
+  fit(lasso_wflow, bike)
+```
+```{r}
+lasso_fit %>%
+  pull_workflow_fit()%>%
+  pluck('fit')
+```
+```{r}
+lasso_fit %>%
+  pull_workflow_fit()%>%
+  pluck('fit')%>%
+  coef(s= 0.303)
+```
+
+Using the lasso method, I was able to drive the adjusted r-squared down into the .63 range. I choose a lambda of .303 which was an adjusted r-squared value of .6331 which is better than both my base model and my ridge model.  
+
+By using lasso, multiple variables were driven to 0 due to them being insufficient predictors. The ridge model was still able to result in an r-squared that was much higher than the baseline model but still there was room for improvement by removing the insufficient predictors. 
+
+
+
+
+
+
+
+

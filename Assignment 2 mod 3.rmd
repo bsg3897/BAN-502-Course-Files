@@ -1,0 +1,236 @@
+---
+output:
+  word_document: default
+  html_document: default
+---
+## Assignment 2 Module 3
+```{r}
+library(tidymodels)
+library(tidyverse)
+library(e1071)
+library(ROCR)
+```
+```{r}
+parole <- read_csv("parole.csv")
+```
+```{r}
+parole = parole %>% mutate(male = as_factor(male)) %>% 
+  mutate(male = fct_recode(male, "Female" = "0", "Male" = "1" )) 
+
+parole = parole %>% mutate(race = as_factor(race)) %>% 
+  mutate(race = fct_recode(race, "Otherwise" = "2", "White" = "1" )) 
+
+parole = parole %>% mutate(state = as_factor(state)) %>% 
+  mutate(state = fct_recode(state, "KY" = "2", "Other" = "1", "LA" = "3", "VA" ="4" )) 
+
+parole = parole %>% mutate(crime = as_factor(crime)) %>% 
+  mutate(crime = fct_recode(crime, "Larceny" = "2", "Other Crime" = "1", "Drug" = "3", "Driving" ="4" )) 
+
+parole = parole %>% mutate(multiple.offenses = as_factor(multiple.offenses)) %>% 
+  mutate(multiple.offenses = fct_recode(multiple.offenses, "NO" = "0", "Multiple" = "1" )) 
+
+parole = parole %>% mutate(violator = as_factor(violator)) %>% 
+  mutate(violator = fct_recode(violator, "No" = "0", "Yes" = "1" )) 
+
+```
+```{r}
+set.seed(12345)
+parole_split = initial_split(parole, prob = 0.70, strata = violator)
+train = training(parole_split)
+test = testing(parole_split)
+```
+```{r}
+ggplot(train, aes(x=male, fill= violator))+geom_bar()
+
+ggplot(train, aes(x=race, fill= violator))+geom_bar()
+
+ggplot(train, aes(y=age, x=violator)) + geom_boxplot()
+
+ggplot(train, aes(x=state, fill= violator))+geom_bar()
+
+ggplot(train, aes(x=violator, y=time.served))+geom_boxplot()
+
+ggplot(train, aes(x=violator, y=max.sentence))+geom_boxplot()
+
+ggplot(train, aes(x=multiple.offenses, fill= violator))+geom_bar()
+
+ggplot(train, aes(x=crime, fill= violator))+geom_bar()
+
+
+```
+```{r}
+t2 = table(train$violator,train$male)
+prop.table(t2, margin = 2)
+```
+```{r}
+t2 = table(train$violator,train$state)
+prop.table(t2, margin = 2)
+```
+```{r}
+t2 = table(train$violator,train$max.sentence)
+prop.table(t2, margin = 2)
+```
+```{r}
+t2 = table(train$violator,train$multiple.offenses)
+prop.table(t2, margin = 2)
+```
+```{r}
+t2 = table(train$violator,train$time.served)
+prop.table(t2, margin = 2)
+```
+
+I found that with this data, state seems to be the best indicator on whether someone is more or less likely to violate parole. Although the relationship is not as strong as I would like for this model, it does have the strongest relationships of all of the variables.  
+
+```{r}
+parole_model = 
+  logistic_reg(mode = "classification")%>%
+  set_engine("glm") 
+
+parole_recipe = recipe(violator ~ state, train) %>%
+step_dummy(all_nominal(), -all_outcomes())
+
+logreg_wf = workflow() %>%
+  add_recipe(parole_recipe) %>% 
+  add_model(parole_model)
+
+parole_fit = fit(logreg_wf, train)
+```
+```{r}
+summary(parole_fit$fit$fit$fit)
+```
+I would not consider this to be a perfect model as it sees the variable Kentucky as insignificant but that variable could be removed in a later model. With and AIC of 308.7, I will evaluate my later models to see how good that score is.  
+
+```{r}
+parole_model = 
+  logistic_reg(mode = "classification")%>%
+  set_engine("glm") 
+
+parole_recipe2 = recipe(violator ~  state + multiple.offenses, train) %>%
+step_dummy(all_nominal(), -all_outcomes())
+
+logreg_wf2 = workflow() %>%
+  add_recipe(parole_recipe2) %>% 
+  add_model(parole_model)
+
+parole_fit2 = fit(logreg_wf2, train)
+```
+```{r}
+summary(parole_fit2$fit$fit$fit)
+```
+
+With this model, using state and mltiple offenses as the predictors, I was able to drop the AIC to 289.41. This was the lowest AIC score I was able to create. I, now,  believe multiple offenses to be a better predictor than state, although state still holds some significance. Multiple offenses, Virginia, and other state are the significant variables in this model.  
+
+```{r}
+parole_model = 
+  logistic_reg(mode = "classification")%>%
+  set_engine("glm") 
+
+parole_recipe_stateoffrace = recipe(violator ~  state + multiple.offenses + race, train) %>%
+step_dummy(all_nominal(), -all_outcomes())
+
+logreg_wf_stateoffrace = workflow() %>%
+  add_recipe(parole_recipe_stateoffrace) %>% 
+  add_model(parole_model)
+
+parole_fit_stateoffrace = fit(logreg_wf_stateoffrace, train)
+```
+```{r}
+summary(parole_fit_stateoffrace$fit$fit$fit)
+```
+
+The quality of this model only slightly lessens from my above model that only included state and multiple offenses. The current AIC is 289.99. The variables that are significant remain the same as above, multiple offenses, Virginia, and other state.  
+
+```{r}
+newdata = data.frame(state = "LA", multiple.offenses = "Multiple", race = "White" )
+predict(parole_fit_stateoffrace, newdata, type = 'prob')
+```
+```{r}
+newdata2 = data.frame(state = "KY", multiple.offenses = "NO", race = "Otherwise" )
+predict(parole_fit_stateoffrace, newdata2, type = 'prob')
+```
+
+Looking at two different types of parolees. A parolee from Louisiana with multiple offenses who is white has a 44% probability of violating parole. While the parolee from Kentucky with no other offenses who is not white only has a 15% probability of violating parole.  
+
+```{r}
+predictions = predict(parole_fit_stateoffrace, train, type="prob") 
+head(predictions)
+```
+```{r}
+predictions = predict(parole_fit_stateoffrace, train, type="prob") [2]
+head(predictions)
+```
+```{r}
+ROCRpred = prediction(predictions, train$violator) 
+
+ROCRperf = performance(ROCRpred, "tpr", "fpr")
+plot(ROCRperf, colorize=TRUE, print.cutoffs.at=seq(0,1,by=0.1), text.adj=c(-0.2,1.7))
+```
+```{r}
+opt.cut = function(perf, pred){
+    cut.ind = mapply(FUN=function(x, y, p){
+        d = (x - 0)^2 + (y-1)^2
+        ind = which(d == min(d))
+        c(sensitivity = y[[ind]], specificity = 1-x[[ind]], 
+            cutoff = p[[ind]])
+    }, perf@x.values, perf@y.values, pred@cutoffs)
+}
+print(opt.cut(ROCRperf, ROCRpred))
+```
+```{r}
+t1 = table(train$violator,predictions > 0.1070172)
+t1
+```
+```{r}
+(t1[1,1]+t1[2,2])/nrow(train)
+```
+
+**What is the accuracy, sensitivity, and specificity of the model on the training set given the cut off from Task 7?**  
+The accuracy is 80.6%, the sesitivity is 0.7118644 and the specificity is 0.7968750.  
+
+**What are the implications of incorrectly classifying a parolee?**  
+The implication of not correctly classifying a parolee is that high risk parolees that are much more likely to violate parole could be removed from the violation classification which could create further issues with law enforcement. Additionally, heavy focus could be place a low risk parolees that were incorrectly classified.  
+
+```{r}
+t1 = table(train$violator,predictions > 0.3)
+t1
+(t1[1,1]+t1[2,2])/nrow(train)
+```
+
+
+```{r}
+t1 = table(train$violator,predictions > 0.5)
+t1
+(t1[1,1]+t1[2,2])/nrow(train)
+```
+
+
+```{r}
+t1 = table(train$violator,predictions > 0.4)
+t1
+(t1[1,1]+t1[2,2])/nrow(train)
+```
+```{r}
+predictions2 = predict(parole_fit_stateoffrace, test, type="prob") [2]
+
+ROCRpred2 = prediction(predictions2, test$violator) 
+
+ROCRperf = performance(ROCRpred, "tpr", "fpr")
+plot(ROCRperf, colorize=TRUE, print.cutoffs.at=seq(0,1,by=0.1), text.adj=c(-0.2,1.7))
+```
+```{r}
+opt.cut = function(perf, pred){
+    cut.ind = mapply(FUN=function(x, y, p){
+        d = (x - 0)^2 + (y-1)^2
+        ind = which(d == min(d))
+        c(sensitivity = y[[ind]], specificity = 1-x[[ind]], 
+            cutoff = p[[ind]])
+    }, perf@x.values, perf@y.values, pred@cutoffs)
+}
+print(opt.cut(ROCRperf, ROCRpred))
+```
+```{r}
+t1 = table(test$violator,predictions2 > 0.5)
+t1
+(t1[1,1]+t1[2,2])/nrow(test)
+```
+

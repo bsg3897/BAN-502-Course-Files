@@ -1,0 +1,146 @@
+---
+output:
+  word_document: default
+  html_document: default
+---
+### Module 6 Assignment 1
+
+```{r}
+library(tidyverse)
+library(tidymodels)
+```
+```{r}
+trucks <- read_csv("trucks.csv")
+str(trucks)
+summary(trucks)
+```
+```{r}
+ggplot(trucks, aes(x= Distance, y=Speeding)) +
+  geom_point() 
+```
+
+**Task 1**  
+There does seem to be natural clustering in this data set among drivers.  
+
+```{r}
+kmeans_recipe = recipe(~ Distance + Speeding , trucks) 
+
+trucks_dummy = kmeans_recipe %>% 
+  step_scale(all_numeric()) %>%
+  step_center(all_numeric()) 
+
+trucks_dummy = prep(trucks_dummy, trucks)
+
+trucks_cleaned = bake(trucks_dummy, trucks)
+```
+
+```{r}
+summary(trucks_cleaned)
+summary(trucks)
+```
+```{r}
+set.seed(64)
+clusters = kmeans(trucks_cleaned, 2)
+```
+```{r}
+trucks = augment(clusters, trucks)
+str(trucks)
+```
+```{r}
+ggplot(trucks, aes(x=Distance ,y=Speeding, color=factor(.cluster))) + geom_point() 
+```
+
+**Task 3**  
+There are two clusters; drivers who drive less than 100 miles a day and driver who drive more. While both clusters have a large portion that speed less than 25% of the time they are on the road, almost all drivers who drive less than 100 miles per day cap out their speeding percentage at about 60%. Where those who drive more than 100 miles per day have a decent amount of drivers who surpass the 60% mark and some who even hit 100%.  
+
+```{r}
+set.seed(412)
+clusts = 
+  tibble(k = 1:8) %>% 
+  mutate(
+    kclust = map(k, ~kmeans(trucks_cleaned, .x)),
+    tidied = map(kclust, tidy),
+    glanced = map(kclust, glance),
+    augmented = map(kclust, augment, trucks_cleaned)
+  )
+
+clusts
+```
+```{r}
+clusters = 
+  clusts %>%
+  unnest(cols = c(tidied))
+
+assignments = 
+  clusts %>% 
+  unnest(cols = c(augmented))
+
+clusterings = 
+  clusts %>%
+  unnest(cols = c(glanced))
+```
+```{r}
+p1 = 
+  ggplot(assignments, aes(x = Distance, y = Speeding)) +
+  geom_point(aes(color = .cluster), alpha = 0.8) + 
+  facet_wrap(~ k)
+p1
+```
+
+**Task 4**  
+4 clusters seems to cluster the data nicely and create clear categories for how much speeding a driver does based on the amount of miles they travel in a day.  
+
+```{r}
+ggplot(clusterings, aes(k, tot.withinss)) +
+  geom_line() +
+  geom_point() + theme_bw()
+```
+
+**Task 5**  
+From the plot above, we can see that 4 seems to be the optimal number of clusters for this set of data.  
+
+```{r}
+set.seed(64)
+clusters = kmeans(trucks_cleaned, 4)
+```
+```{r}
+trucks = augment(clusters, trucks)
+str(trucks)
+```
+```{r}
+ggplot(trucks, aes(x=Distance ,y=Speeding, color=factor(.cluster))) + geom_point() 
+```
+
+**Task 6**  
+We see in this new plot with the optimal clusters of 4, that drivers that drive less than 100 miles in a day are nicely split between those who speed less than around 15%  and those who speed more than 15% of the time that they are on the road. With the drivers who drive more than 100 miles, it is split between those who speed less than around 35% and those who speed more than 35% of the time they are on the road. The clusters are very clearly divided and the division makes sense with the data.  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
